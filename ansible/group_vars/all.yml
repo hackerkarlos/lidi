@@ -1,0 +1,46 @@
+---
+# Defaults shared by both sender and receiver hosts.
+# Override per-host in the inventory or in group_vars/lidi_{send,receive}.yml.
+
+# --- Service identity --------------------------------------------------------
+
+lidi_user: lidi
+lidi_group: lidi
+lidi_home: /var/lib/lidi
+lidi_install_prefix: /usr/local/bin
+
+# --- Install method ----------------------------------------------------------
+# "source": clone lidi_source_repo at lidi_source_version and build with cargo.
+#           Requires internet access from the target host. Default.
+# "binary": copy a pre-built binary from the control node — useful for the
+#           air-gapped (high) side. Set lidi_binary_send_path /
+#           lidi_binary_receive_path to absolute paths on the controller.
+
+lidi_install_method: source
+lidi_source_repo: "https://github.com/ANSSI-FR/lidi.git"
+lidi_source_version: "master"   # tag, branch, or commit SHA
+lidi_source_dir: "{{ lidi_home }}/src/lidi"
+lidi_force_rebuild: false        # set true to force `cargo install` even if version unchanged
+
+# Only used when lidi_install_method == "binary"
+lidi_binary_send_path: ""        # absolute path on the Ansible control node
+lidi_binary_receive_path: ""
+
+# --- RaptorQ / link parameters (must match on both sides) --------------------
+# Leave as null to let lidi use its compiled-in defaults.
+
+lidi_mtu: null                   # --to-mtu / --from-mtu, default 1500
+lidi_block_bytes: null           # --block, default depends on build
+lidi_repair_pct: null            # --repair, default 15
+lidi_batch: null                 # --batch (2..1024)
+
+# --- Logging -----------------------------------------------------------------
+
+lidi_log_level: "Info"           # Off, Error, Warn, Info, Debug, Trace
+lidi_log_file: ""                # empty = log to journald only
+
+# --- Observability HTTP server ----------------------------------------------
+# When enabled, exposes the embedded dashboard + /metrics. Bind to 127.0.0.1
+# unless you front it with a reverse proxy or trust the network.
+
+lidi_http_addr: ""               # e.g. "127.0.0.1:8080" — empty disables

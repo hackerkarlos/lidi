@@ -1,0 +1,41 @@
+---
+# Shared setup: service user, install method dispatch, common state files.
+
+- name: Create lidi system group
+  ansible.builtin.group:
+    name: "{{ lidi_group }}"
+    system: true
+    state: present
+
+- name: Create lidi system user
+  ansible.builtin.user:
+    name: "{{ lidi_user }}"
+    group: "{{ lidi_group }}"
+    home: "{{ lidi_home }}"
+    shell: /usr/sbin/nologin
+    system: true
+    create_home: true
+    state: present
+
+- name: Ensure home dir is owned correctly
+  ansible.builtin.file:
+    path: "{{ lidi_home }}"
+    owner: "{{ lidi_user }}"
+    group: "{{ lidi_group }}"
+    mode: "0750"
+    state: directory
+
+- name: Source build path
+  ansible.builtin.import_tasks: build_from_source.yml
+  when: lidi_install_method == "source"
+
+- name: Pre-built binary path
+  ansible.builtin.import_tasks: install_artifact.yml
+  when: lidi_install_method == "binary"
+
+- name: Reject unknown install method
+  ansible.builtin.fail:
+    msg: >-
+      lidi_install_method must be "source" or "binary"; got
+      "{{ lidi_install_method }}".
+  when: lidi_install_method not in ["source", "binary"]

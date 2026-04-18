@@ -1,0 +1,15 @@
+---
+# diode-send specifics. At minimum, override lidi_send_from_tcp and
+# lidi_send_to in your inventory.
+
+lidi_send_from_tcp: ""           # required if lidi_send_from_unix is empty
+lidi_send_from_unix: ""          # required if lidi_send_from_tcp is empty
+lidi_send_to: ""                 # required: <ip>:<port> of the receiver
+lidi_send_to_bind: ""            # optional: source <ip>:<port> for the UDP egress
+
+# Performance knobs — leave empty to let lidi pick its defaults.
+lidi_send_encode_threads: ""     # --encode-threads
+lidi_send_cpu_affinity: false    # --cpu-affinity
+lidi_send_heartbeat: ""          # --heartbeat (seconds; 0 disables)
+lidi_send_hash: false            # --hash
+lidi_send_flush: false           # --flush

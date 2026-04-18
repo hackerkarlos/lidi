@@ -1,0 +1,25 @@
+---
+# Top-level playbook: deploys lidi on the host groups defined in the inventory.
+#
+# Run against the sender side, the receiver side, or both. In a real diode
+# deployment the two sides are on different network sides, so you typically
+# run this twice — once from each side's control node:
+#
+#   ansible-playbook -i inventory.yml site.yml --limit lidi_send
+#   ansible-playbook -i inventory.yml site.yml --limit lidi_receive
+
+- name: Install lidi (sender side)
+  hosts: lidi_send
+  become: true
+  gather_facts: true
+  roles:
+    - role: lidi_common
+    - role: lidi_send
+
+- name: Install lidi (receiver side)
+  hosts: lidi_receive
+  become: true
+  gather_facts: true
+  roles:
+    - role: lidi_common
+    - role: lidi_receive

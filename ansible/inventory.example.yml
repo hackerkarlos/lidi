@@ -1,0 +1,27 @@
+---
+# Example inventory for a two-host lidi deployment.
+#
+# Copy to inventory.yml, edit the host blocks, then:
+#   ansible-playbook -i inventory.yml site.yml
+#
+# Host-level vars override group_vars/lidi_send.yml and lidi_receive.yml.
+
+all:
+  children:
+    lidi_send:
+      hosts:
+        diode-low.example.internal:
+          ansible_host: 10.10.0.5
+          # Where this sender accepts plaintext TCP from upstream producers.
+          lidi_send_from_tcp: "10.10.0.5:5000"
+          # Where to send the UDP stream — the receiver's --from address.
+          lidi_send_to: "10.20.0.6:6000"
+
+    lidi_receive:
+      hosts:
+        diode-high.example.internal:
+          ansible_host: 10.20.0.6
+          # Must match the sender's --to.
+          lidi_receive_from: "10.20.0.6:6000"
+          # Where this receiver re-emits the stream on the high side.
+          lidi_receive_to_tcp: "10.20.0.7:7000"

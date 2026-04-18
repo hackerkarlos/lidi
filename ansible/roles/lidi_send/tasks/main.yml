@@ -1,0 +1,25 @@
+---
+- name: Validate sender data source is configured
+  ansible.builtin.assert:
+    that:
+      - (lidi_send_from_tcp | length > 0) or (lidi_send_from_unix | length > 0)
+      - lidi_send_to | length > 0
+    fail_msg: >-
+      diode-send requires lidi_send_to and at least one of
+      lidi_send_from_tcp or lidi_send_from_unix.
+
+- name: Install diode-send systemd unit
+  ansible.builtin.template:
+    src: diode-send.service.j2
+    dest: /etc/systemd/system/lidi-send.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload and restart lidi-send
+
+- name: Enable lidi-send
+  ansible.builtin.systemd:
+    name: lidi-send.service
+    enabled: true
+    daemon_reload: true
+    state: started

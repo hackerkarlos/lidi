@@ -1,0 +1,96 @@
+---
+# Build lidi from source on the target host using rustup + cargo.
+# Idempotent: cargo+clone re-runs are cheap; the install step is gated on
+# whether the resolved git SHA matches the binary already on disk.
+
+- name: Install build dependencies (Debian/Ubuntu)
+  ansible.builtin.apt:
+    name: "{{ lidi_build_packages_debian }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  when: ansible_os_family == "Debian"
+
+- name: Install build dependencies (RHEL/Fedora)
+  ansible.builtin.dnf:
+    name: "{{ lidi_build_packages_redhat }}"
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Check whether rustup is already installed
+  ansible.builtin.stat:
+    path: "{{ lidi_home }}/.cargo/bin/cargo"
+  register: lidi_cargo_stat
+
+- name: Install rustup ({{ lidi_rust_channel }})
+  become: true
+  become_user: "{{ lidi_user }}"
+  ansible.builtin.shell: |
+    set -euo pipefail
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+      | sh -s -- -y --default-toolchain {{ lidi_rust_channel }} --profile minimal
+  args:
+    executable: /bin/bash
+    creates: "{{ lidi_home }}/.cargo/bin/cargo"
+  when: not lidi_cargo_stat.stat.exists
+
+- name: Update rust toolchain to {{ lidi_rust_channel }}
+  become: true
+  become_user: "{{ lidi_user }}"
+  ansible.builtin.command:
+    cmd: "{{ lidi_home }}/.cargo/bin/rustup update {{ lidi_rust_channel }}"
+  register: lidi_rustup_update
+  changed_when: "'unchanged' not in lidi_rustup_update.stdout"
+
+- name: Clone or update lidi source
+  become: true
+  become_user: "{{ lidi_user }}"
+  ansible.builtin.git:
+    repo: "{{ lidi_source_repo }}"
+    dest: "{{ lidi_source_dir }}"
+    version: "{{ lidi_source_version }}"
+    force: true
+  register: lidi_git
+
+- name: Resolve installed binary fingerprint
+  ansible.builtin.stat:
+    path: "{{ lidi_install_prefix }}/diode-send"
+    checksum_algorithm: sha256
+  register: lidi_send_installed
+
+- name: Build release binaries with cargo
+  become: true
+  become_user: "{{ lidi_user }}"
+  ansible.builtin.command:
+    cmd: "{{ lidi_home }}/.cargo/bin/cargo build --release --locked"
+    chdir: "{{ lidi_source_dir }}"
+  environment:
+    PATH: "{{ lidi_home }}/.cargo/bin:{{ ansible_env.PATH }}"
+  register: lidi_cargo_build
+  changed_when: lidi_cargo_build.rc == 0
+  when: >-
+    lidi_force_rebuild
+    or lidi_git.changed
+    or not lidi_send_installed.stat.exists
+
+- name: Install diode-send binary
+  ansible.builtin.copy:
+    src: "{{ lidi_source_dir }}/target/release/diode-send"
+    dest: "{{ lidi_install_prefix }}/diode-send"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0755"
+  when: lidi_cargo_build is changed
+  notify: Restart lidi-send
+
+- name: Install diode-receive binary
+  ansible.builtin.copy:
+    src: "{{ lidi_source_dir }}/target/release/diode-receive"
+    dest: "{{ lidi_install_prefix }}/diode-receive"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0755"
+  when: lidi_cargo_build is changed
+  notify: Restart lidi-receive

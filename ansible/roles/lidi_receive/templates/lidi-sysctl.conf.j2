@@ -1,0 +1,7 @@
+{{ ansible_managed | comment }}
+# Kernel UDP receive-buffer sizing for lidi.
+# See doc/tweaking.rst — value below = MTU * packets_per_block * 127.
+
+net.ipv4.udp_mem      = {{ lidi_receive_udp_buffer_bytes }} {{ lidi_receive_udp_buffer_bytes }} {{ lidi_receive_udp_buffer_bytes }}
+net.core.rmem_max     = {{ lidi_receive_udp_buffer_bytes }}
+net.ipv4.udp_rmem_min = {{ lidi_receive_udp_buffer_bytes }}

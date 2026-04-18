@@ -1,0 +1,22 @@
+---
+# Build-time package list — needed only when lidi_install_method == "source".
+# Override per-distro in inventory if your platform uses different package
+# names (e.g. add cmake/llvm on RHEL derivatives).
+
+lidi_build_packages_debian:
+  - build-essential
+  - pkg-config
+  - git
+  - curl
+  - ca-certificates
+
+lidi_build_packages_redhat:
+  - "@Development tools"
+  - pkgconf-pkg-config
+  - git
+  - curl
+  - ca-certificates
+
+# Rust toolchain pinned to a known-good version. lidi targets edition 2024,
+# which requires rustc 1.85+. Bump as upstream raises its MSRV.
+lidi_rust_channel: "stable"

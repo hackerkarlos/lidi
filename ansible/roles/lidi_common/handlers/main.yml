@@ -1,0 +1,20 @@
+---
+# Handlers fired by binary install/upgrade. The actual unit files are
+# installed by the per-side roles, so these handlers are only meaningful
+# after the matching side role has run; an absent unit triggers a no-op.
+
+- name: Restart lidi-send
+  ansible.builtin.systemd:
+    name: lidi-send.service
+    state: restarted
+    daemon_reload: true
+  when: "'lidi_send' in group_names"
+  listen: Restart lidi-send
+
+- name: Restart lidi-receive
+  ansible.builtin.systemd:
+    name: lidi-receive.service
+    state: restarted
+    daemon_reload: true
+  when: "'lidi_receive' in group_names"
+  listen: Restart lidi-receive

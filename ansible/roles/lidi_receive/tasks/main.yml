@@ -1,0 +1,36 @@
+---
+- name: Validate receiver sink is configured
+  ansible.builtin.assert:
+    that:
+      - lidi_receive_from | length > 0
+      - (lidi_receive_to_tcp | length > 0) or (lidi_receive_to_unix | length > 0)
+      - not (lidi_receive_to_tcp | length > 0 and lidi_receive_to_unix | length > 0)
+    fail_msg: >-
+      diode-receive requires lidi_receive_from and exactly one of
+      lidi_receive_to_tcp or lidi_receive_to_unix.
+
+- name: Install kernel UDP-buffer sysctl drop-in
+  ansible.builtin.template:
+    src: lidi-sysctl.conf.j2
+    dest: /etc/sysctl.d/60-lidi.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload sysctl
+  when: lidi_receive_apply_sysctl
+
+- name: Install diode-receive systemd unit
+  ansible.builtin.template:
+    src: diode-receive.service.j2
+    dest: /etc/systemd/system/lidi-receive.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload and restart lidi-receive
+
+- name: Enable lidi-receive
+  ansible.builtin.systemd:
+    name: lidi-receive.service
+    enabled: true
+    daemon_reload: true
+    state: started

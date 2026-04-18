@@ -1,0 +1,82 @@
+{{ ansible_managed | comment }}
+[Unit]
+Description=lidi data diode (sender)
+Documentation=https://anssi-fr.github.io/lidi/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ lidi_user }}
+Group={{ lidi_group }}
+ExecStart={{ lidi_install_prefix }}/diode-send \
+{% if lidi_send_from_tcp | length > 0 %}
+    --from-tcp {{ lidi_send_from_tcp }} \
+{% endif %}
+{% if lidi_send_from_unix | length > 0 %}
+    --from-unix {{ lidi_send_from_unix }} \
+{% endif %}
+    --to {{ lidi_send_to }} \
+{% if lidi_send_to_bind | length > 0 %}
+    --to-bind {{ lidi_send_to_bind }} \
+{% endif %}
+{% if lidi_mtu is not none %}
+    --to-mtu {{ lidi_mtu }} \
+{% endif %}
+{% if lidi_block_bytes is not none %}
+    --block {{ lidi_block_bytes }} \
+{% endif %}
+{% if lidi_repair_pct is not none %}
+    --repair {{ lidi_repair_pct }} \
+{% endif %}
+{% if lidi_batch is not none %}
+    --batch {{ lidi_batch }} \
+{% endif %}
+{% if lidi_send_encode_threads | length > 0 %}
+    --encode-threads {{ lidi_send_encode_threads }} \
+{% endif %}
+{% if lidi_send_cpu_affinity %}
+    --cpu-affinity \
+{% endif %}
+{% if lidi_send_heartbeat | length > 0 %}
+    --heartbeat {{ lidi_send_heartbeat }} \
+{% endif %}
+{% if lidi_send_hash %}
+    --hash \
+{% endif %}
+{% if lidi_send_flush %}
+    --flush \
+{% endif %}
+{% if lidi_log_file | length > 0 %}
+    --log-file {{ lidi_log_file }} \
+{% endif %}
+{% if lidi_http_addr | length > 0 %}
+    --http-addr {{ lidi_http_addr }} \
+{% endif %}
+    --log-level {{ lidi_log_level }}
+
+Restart=on-failure
+RestartSec=5s
+
+# --- Hardening -------------------------------------------------------------
+# diode-send only needs to bind one TCP listener and send UDP. Lock the rest
+# of the process surface down.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictRealtime=true
+SystemCallArchitectures=native
+{% if lidi_send_from_unix | length > 0 %}
+# Unix socket lives under {{ lidi_send_from_unix | dirname }} — must be writable.
+ReadWritePaths={{ lidi_send_from_unix | dirname }}
+{% endif %}
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,25 @@
+---
+# diode-receive specifics. At minimum, override lidi_receive_from and
+# lidi_receive_to_tcp (or lidi_receive_to_unix) in your inventory.
+
+lidi_receive_from: ""            # required: <ip>:<port> matching sender's --to
+lidi_receive_to_tcp: ""          # required if lidi_receive_to_unix is empty
+lidi_receive_to_unix: ""         # required if lidi_receive_to_tcp is empty
+
+lidi_receive_decode_threads: ""  # --decode-threads
+lidi_receive_cpu_affinity: false # --cpu-affinity
+lidi_receive_heartbeat: ""       # --heartbeat (seconds)
+lidi_receive_min_repair: ""      # --min-repair
+lidi_receive_reset_timeout: ""   # --reset-timeout
+lidi_receive_abort_timeout: ""   # --abort-timeout (0 disables)
+lidi_receive_hash: false         # --hash
+lidi_receive_flush: false        # --flush
+
+# --- Kernel tuning ---------------------------------------------------------
+# UDP receive buffers are sized for 127 RaptorQ blocks worth of packets:
+#   MTU * packets_per_block * 127
+# For lidi defaults (MTU=1500, packets_per_block=512) → 97_536_000 bytes.
+# Override only if you know your block geometry differs.
+
+lidi_receive_apply_sysctl: true
+lidi_receive_udp_buffer_bytes: 97536000

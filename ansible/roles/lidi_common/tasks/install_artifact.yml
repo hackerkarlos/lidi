@@ -1,0 +1,41 @@
+---
+# Copy a pre-built binary from the control node to the target. Use this for
+# air-gapped receivers, or when you build once and deploy to a fleet.
+
+- name: Validate binary path is set for sender hosts
+  ansible.builtin.assert:
+    that:
+      - lidi_binary_send_path | length > 0
+    fail_msg: >-
+      lidi_install_method=binary requires lidi_binary_send_path to point at
+      a pre-built diode-send on the Ansible control node.
+  when: "'lidi_send' in group_names"
+
+- name: Validate binary path is set for receiver hosts
+  ansible.builtin.assert:
+    that:
+      - lidi_binary_receive_path | length > 0
+    fail_msg: >-
+      lidi_install_method=binary requires lidi_binary_receive_path to point
+      at a pre-built diode-receive on the Ansible control node.
+  when: "'lidi_receive' in group_names"
+
+- name: Copy diode-send binary
+  ansible.builtin.copy:
+    src: "{{ lidi_binary_send_path }}"
+    dest: "{{ lidi_install_prefix }}/diode-send"
+    owner: root
+    group: root
+    mode: "0755"
+  when: "'lidi_send' in group_names"
+  notify: Restart lidi-send
+
+- name: Copy diode-receive binary
+  ansible.builtin.copy:
+    src: "{{ lidi_binary_receive_path }}"
+    dest: "{{ lidi_install_prefix }}/diode-receive"
+    owner: root
+    group: root
+    mode: "0755"
+  when: "'lidi_receive' in group_names"
+  notify: Restart lidi-receive
