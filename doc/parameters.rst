@@ -21,8 +21,8 @@ Here is a diagram of the components involved in an example usage of lidi, annota
 
 Following, we provide some details about each command line options.
 
-Adresses and ports
-------------------
+Addresses and ports
+-------------------
 
 As shown in the :ref:`Getting started` chapter, default values work well for testing the diode on a single machine. But for real application, ip addresses and ports must be configured properly. There are three points in the diode chain where those settings should be provided.
 
@@ -34,8 +34,6 @@ The diode-send side gets data from TCP connections. It is necessary to specify i
 .. code-block:: none
 
    --from-tcp <ip:port>
-
-Default value is 127.0.0.1:5000.
 
 TCP data destination
 """"""""""""""""""""
@@ -49,7 +47,7 @@ On the diode-receive side, data will be sent to TCP connected clients. To specif
 Unix data source
 """"""""""""""""
 
-The diode-send side gets data from Unix connections. It is necessary to specify ip address and port in which Unix connections will be accepted with the following parameter:
+The diode-send side gets data from Unix connections. It is necessary to specify the path at which Unix connections will be accepted with the following parameter:
 
 .. code-block:: none
 
@@ -64,6 +62,9 @@ On the diode-receive side, data will be sent to Unix connected clients. To speci
 
    --to-unix <path>
 
+.. note::
+   On the sender side, at least one of ``--from-tcp`` or ``--from-unix`` must be specified (both can be used simultaneously). On the receiver side, exactly one of ``--to-tcp`` or ``--to-unix`` must be specified.
+
 UDP transfer
 """"""""""""
 
@@ -73,8 +74,8 @@ UDP transfer is the core of the diode. Settings ip addresses and port is necessa
 
    --to <ip:port>
 
-describe where to send data and is defaulted to 127.0.0.1:6000, and socket is bound to address and port according to:
-  
+describes where to send data, and socket is bound to address and port according to:
+
 .. code-block:: none
 
    --to-bind <ip:port>
@@ -87,7 +88,7 @@ On the receiver side, the option:
 
    --from <ip:port>
 
-defines ip and port to listen for incoming UDP packets, and should be set to the same value as `--to`.
+defines ip and port to listen for incoming UDP packets, and should be set to the same value as ``--to``.
 
 Block and packet sizes
 ----------------------
@@ -117,15 +118,33 @@ Then, on the logical level, fountain codes operates on blocks. If blocks reorder
 .. code-block:: none
 
    --block <nb_bytes>
-  
+
    --repair <percentage>
 
+On the receiver side, the ``--min-repair`` parameter controls the minimal percentage of RaptorQ repair data required before attempting to decode a block:
+
+.. code-block:: none
+
+   --min-repair <percentage>
+     (receiver side, default: 1)
+
 See the :ref:`Tweaking parameters` chapter for more details on how to choose optimal values for your particular use case and devices.
+
+Batch mode
+----------
+
+Both sides support batching multiple UDP datagrams into a single system call using ``sendmmsg`` (sender) and ``recvmmsg`` (receiver). This can improve throughput on high-speed links:
+
+.. code-block:: none
+
+   --batch <2..1024>
+
+When set, lidi sends or receives from 2 to 1024 UDP datagrams at once.
 
 Multiplexing
 ------------
 
-Lidi can handle several transfers in parallel, so that big data transfer doesn't prevent other data chunks to be handled. The number of transfers in parallel is adapted by lidi according to the number of TCP clients that can be connected simultaneously.It can be configured on both sides with the option: 
+Lidi can handle several transfers in parallel, so that big data transfer doesn't prevent other data chunks to be handled. The number of transfers in parallel is adapted by lidi according to the number of TCP clients that can be connected simultaneously. It can be configured on both sides with the option:
 
 .. code-block:: none
 
@@ -148,6 +167,12 @@ To ensure data integrity through the UDP link, Lidi uses RaptorQ fountain codes.
    --decode-threads <nb>
      (receiver side, default: 1).
 
+CPU affinity can be enabled on both sides to pin threads to specific cores:
+
+.. code-block:: none
+
+   --cpu-affinity
+
 Timeouts
 --------
 
@@ -160,6 +185,13 @@ Thus, a configurable timeout is used in lidi to decide when to reset fountain co
    --reset-timeout <nb_secs>
      (receiver side, default: 2)
 
+Additionally, client connections can be aborted after a configurable period of inactivity:
+
+.. code-block:: none
+
+   --abort-timeout <seconds>
+     (receiver side, optional, 0 = no abort)
+
 Heartbeat
 ---------
 
@@ -170,4 +202,62 @@ Since the purpose of the diode is to only allow one-way data traffic, the sender
    --heartbeat <nb_secs>
 
 The default values are 5 seconds for the sender (i.e. a heartbeat message is sent every 5 seconds) and 10 seconds for the receiver (i.e. warnings are displayed whenever during 10 seconds no heartbeat message was received). Due to latency, timeouts and network load, the receiver value must always be greater than the sender value.
+
+Set to 0 on the sender side to disable heartbeat emission.
+
+Data integrity
+--------------
+
+Lidi can compute and verify a hash of each client transfer to detect data corruption beyond what RaptorQ provides:
+
+.. code-block:: none
+
+   --hash
+
+When enabled on the sender side, a hash is computed over the transferred data. The receiver side should also enable ``--hash`` to verify data integrity.
+
+Flushing
+--------
+
+By default, data is buffered before being sent or forwarded. To flush data immediately (at the cost of potentially lower throughput), use:
+
+.. code-block:: none
+
+   --flush
+
+This flag is available on both sender and receiver sides.
+
+Logging
+-------
+
+The log level can be set on all binaries with:
+
+.. code-block:: none
+
+   --log-level <Off|Error|Warn|Info|Debug|Trace>
+
+The default value is ``Info``. On the main ``diode-send`` and ``diode-receive`` binaries, logs can also be written to a file:
+
+.. code-block:: none
+
+   --log-file <path>
+
+Observability
+-------------
+
+Both ``diode-send`` and ``diode-receive`` can expose a read-only HTTP server for live observability:
+
+.. code-block:: none
+
+   --http-addr <ip:port>
+
+When enabled, the following endpoints are available:
+
+- ``GET /`` — embedded HTML dashboard showing live status
+- ``GET /api/info`` — static configuration snapshot (JSON)
+- ``GET /api/status`` — live counters and active clients (JSON)
+- ``GET /api/logs`` — recent log lines (JSON, optional ``?since=<cursor>``)
+
+.. warning::
+   The HTTP server does not provide authentication. Bind to ``127.0.0.1`` to restrict access to the local machine.
 

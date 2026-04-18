@@ -1,0 +1,35 @@
+# Layered override that exposes lidi's embedded read-only HTTP observability
+# frontend on the host. Apply alongside the base compose file:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.observability.yml up
+#
+# The frontend has NO authentication. Host-side port bindings use 127.0.0.1 so
+# the dashboard is reachable only from the local machine. Binding to 0.0.0.0
+# inside the container is safe because Docker only forwards explicitly
+# published ports.
+#
+# Compose merges `ports:` lists additively but REPLACES `command:` wholesale,
+# so each command block below must repeat every flag from docker-compose.yml.
+
+services:
+  send:
+    ports:
+      - "127.0.0.1:8080:8080"
+    command:
+      - "--from-tcp"
+      - "172.16.0.2:5000"
+      - "--to"
+      - "172.16.0.3:6000"
+      - "--http-addr"
+      - "0.0.0.0:8080"
+
+  receive:
+    ports:
+      - "127.0.0.1:8081:8081"
+    command:
+      - "--from"
+      - "172.16.0.3:6000"
+      - "--to-tcp"
+      - "172.16.0.1:7000"
+      - "--http-addr"
+      - "0.0.0.0:8081"

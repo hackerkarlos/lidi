@@ -1,0 +1,22 @@
+# Sample Prometheus scrape config for a lidi deployment.
+#
+# Each side of the diode runs its own observability HTTP server, so each is a
+# separate target. The `role` label is already produced by lidi itself
+# (role="send" / role="receive"), so do not add a colliding `role` here.
+#
+# Adjust the targets to match your deployment. In a real diode setup the
+# sender and receiver live on different network sides; you will typically run
+# Prometheus on the same machine as each side and federate, or only scrape one
+# side over the air gap is impossible.
+
+global:
+  scrape_interval: 5s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: lidi
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - "127.0.0.1:8080"  # diode-send  --http-addr 127.0.0.1:8080
+          - "127.0.0.1:8081"  # diode-receive --http-addr 127.0.0.1:8081

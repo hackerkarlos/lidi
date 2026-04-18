@@ -44,6 +44,8 @@ Sending files with Lidi
              Size of client write buffer [default: 4194304]
          --hash
              Verify the hash of file content
+         --max-files <max_files>
+             Exits after receiving max_files files [default: 0]
      -h, --help
              Print help
 

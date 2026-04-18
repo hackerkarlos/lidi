@@ -11,6 +11,7 @@
 //! - `GET /api/info`    → static config snapshot
 //! - `GET /api/status`  → live counters + active clients
 //! - `GET /api/logs`    → recent log lines (optional `?since=<u64>`)
+//! - `GET /metrics`     → Prometheus text exposition format (counters + gauges)
 
 use std::{
     fmt::Write as FmtWrite,
@@ -83,12 +84,7 @@ pub fn start(
     }
 }
 
-fn handle(
-    mut stream: TcpStream,
-    stats: &Stats,
-    info: &InfoSnapshot,
-    log_ring: Option<&LogRing>,
-) {
+fn handle(mut stream: TcpStream, stats: &Stats, info: &InfoSnapshot, log_ring: Option<&LogRing>) {
     let _ = stream.set_read_timeout(Some(READ_TIMEOUT));
     let _ = stream.set_write_timeout(Some(WRITE_TIMEOUT));
     let _ = stream.set_nodelay(true);
@@ -152,6 +148,17 @@ fn handle(
                 200,
                 "OK",
                 "application/json; charset=utf-8",
+                body.as_bytes(),
+            );
+        }
+        "/metrics" => {
+            let snapshot = stats.snapshot();
+            let body = render_metrics(stats.role, info, &snapshot);
+            write_response(
+                &mut stream,
+                200,
+                "OK",
+                "text/plain; version=0.0.4; charset=utf-8",
                 body.as_bytes(),
             );
         }
@@ -282,9 +289,7 @@ fn render_info(info: &InfoSnapshot) -> String {
     field_opt_string(
         &mut out,
         "unix",
-        info.listener_unix
-            .as_ref()
-            .map(|p| p.display().to_string()),
+        info.listener_unix.as_ref().map(|p| p.display().to_string()),
         false,
     );
     out.push('}');
@@ -317,7 +322,12 @@ fn render_status(role: &str, snap: &StatsSnapshot) -> String {
     field_u64(&mut out, "bytes_total", snap.bytes_total, false);
     field_u64(&mut out, "packets_total", snap.packets_total, false);
     field_u64(&mut out, "transfers_started", snap.transfers_started, false);
-    field_u64(&mut out, "transfers_finished", snap.transfers_finished, false);
+    field_u64(
+        &mut out,
+        "transfers_finished",
+        snap.transfers_finished,
+        false,
+    );
     field_u64(&mut out, "transfers_aborted", snap.transfers_aborted, false);
     // `active_count` is a `usize`; cast narrowly with `u64::try_from` so we
     // don't silently wrap on 128-bit-of-the-future targets.
@@ -385,6 +395,119 @@ fn render_logs(ring: Option<&LogRing>, since: u64) -> String {
     }
     out.push(']');
     out.push('}');
+    out
+}
+
+// --- Prometheus exposition --------------------------------------------------
+
+fn render_metrics(role: &str, info: &InfoSnapshot, snap: &StatsSnapshot) -> String {
+    let role_label = escape_label_value(role);
+    let mut out = String::with_capacity(1536);
+
+    let _ = writeln!(out, "# HELP lidi_uptime_seconds Process uptime in seconds.");
+    let _ = writeln!(out, "# TYPE lidi_uptime_seconds gauge");
+    let _ = writeln!(
+        out,
+        "lidi_uptime_seconds{{role=\"{role_label}\"}} {}",
+        snap.uptime_secs
+    );
+
+    let _ = writeln!(
+        out,
+        "# HELP lidi_bytes_total Total payload bytes accepted (send) or forwarded (receive)."
+    );
+    let _ = writeln!(out, "# TYPE lidi_bytes_total counter");
+    let _ = writeln!(
+        out,
+        "lidi_bytes_total{{role=\"{role_label}\"}} {}",
+        snap.bytes_total
+    );
+
+    let _ = writeln!(
+        out,
+        "# HELP lidi_packets_total Total RaptorQ packets sent or received."
+    );
+    let _ = writeln!(out, "# TYPE lidi_packets_total counter");
+    let _ = writeln!(
+        out,
+        "lidi_packets_total{{role=\"{role_label}\"}} {}",
+        snap.packets_total
+    );
+
+    let _ = writeln!(
+        out,
+        "# HELP lidi_transfers_total Total client transfers, partitioned by terminal result."
+    );
+    let _ = writeln!(out, "# TYPE lidi_transfers_total counter");
+    let _ = writeln!(
+        out,
+        "lidi_transfers_total{{role=\"{role_label}\",result=\"started\"}} {}",
+        snap.transfers_started
+    );
+    let _ = writeln!(
+        out,
+        "lidi_transfers_total{{role=\"{role_label}\",result=\"finished\"}} {}",
+        snap.transfers_finished
+    );
+    let _ = writeln!(
+        out,
+        "lidi_transfers_total{{role=\"{role_label}\",result=\"aborted\"}} {}",
+        snap.transfers_aborted
+    );
+
+    let _ = writeln!(
+        out,
+        "# HELP lidi_active_transfers Number of currently active client transfers."
+    );
+    let _ = writeln!(out, "# TYPE lidi_active_transfers gauge");
+    let _ = writeln!(
+        out,
+        "lidi_active_transfers{{role=\"{role_label}\"}} {}",
+        snap.active_count
+    );
+
+    let _ = writeln!(
+        out,
+        "# HELP lidi_last_heartbeat_unix_seconds Unix time of the most recent heartbeat block (0 = none yet)."
+    );
+    let _ = writeln!(out, "# TYPE lidi_last_heartbeat_unix_seconds gauge");
+    // Snapshot stores ms; convert to seconds for the Prometheus convention.
+    // Format as "<secs>.<millis-frac>" to avoid an f64 cast (clippy::pedantic
+    // forbids u64→f64 due to mantissa precision loss past 2^53).
+    let hb_secs = snap.last_heartbeat_unix_ms / 1000;
+    let hb_frac = snap.last_heartbeat_unix_ms % 1000;
+    let _ = writeln!(
+        out,
+        "lidi_last_heartbeat_unix_seconds{{role=\"{role_label}\"}} {hb_secs}.{hb_frac:03}"
+    );
+
+    let _ = writeln!(
+        out,
+        "# HELP lidi_info Static configuration metadata. Always 1; metadata is in the labels."
+    );
+    let _ = writeln!(out, "# TYPE lidi_info gauge");
+    let version = escape_label_value(info.version);
+    let _ = writeln!(
+        out,
+        "lidi_info{{role=\"{role_label}\",version=\"{version}\",block_bytes=\"{}\",repair_pct=\"{}\",mtu=\"{}\"}} 1",
+        info.block_bytes, info.repair_pct, info.mtu
+    );
+
+    out
+}
+
+/// Escape per the Prometheus text exposition format spec: backslash, double
+/// quote, and newline. Tab, carriage return, etc. are passed through verbatim.
+fn escape_label_value(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            c => out.push(c),
+        }
+    }
     out
 }
 

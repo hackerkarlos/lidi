@@ -1,0 +1,189 @@
+---
+# Sample Zabbix template for a lidi diode side. Targets Zabbix 6.0+ (YAML
+# import format). Attach to both the sender and receiver hosts; the `role`
+# label inside each metric tells dashboards which side the data came from,
+# so one template covers both.
+#
+# Macros to override per host (or globally):
+#   {$LIDI_HTTP_HOST}  default 127.0.0.1  — bind address of --http-addr
+#   {$LIDI_HTTP_PORT}  default 8080       — port of --http-addr
+#
+# Import: Zabbix UI → Data collection → Templates → Import → this file.
+
+zabbix_export:
+  version: '6.0'
+  date: '2026-04-18T00:00:00Z'
+  groups:
+    - uuid: b771cbb353e64e96bc088593119ee824
+      name: Templates/Applications
+  templates:
+    - uuid: 7baa03a58ecb46d088d671f574478cca
+      template: 'lidi diode'
+      name: 'lidi diode'
+      description: |
+        Scrapes the embedded /metrics endpoint of a lidi sender or receiver.
+        See https://github.com/ANSSI-FR/lidi.
+      groups:
+        - name: Templates/Applications
+      macros:
+        - macro: '{$LIDI_HTTP_HOST}'
+          value: '127.0.0.1'
+        - macro: '{$LIDI_HTTP_PORT}'
+          value: '8080'
+        - macro: '{$LIDI_HEARTBEAT_AGE_WARN}'
+          value: '30'
+          description: 'Seconds since last heartbeat before alerting'
+      items:
+        # --- Master scrape -----------------------------------------------
+        - uuid: b4c9a58585b142c681742bc4d5c8b9b7
+          name: 'lidi: /metrics raw scrape'
+          type: HTTP_AGENT
+          key: 'lidi.metrics.raw'
+          delay: 30s
+          history: '0'
+          trends: '0'
+          value_type: TEXT
+          url: 'http://{$LIDI_HTTP_HOST}:{$LIDI_HTTP_PORT}/metrics'
+          status_codes: '200'
+          timeout: 5s
+          description: 'Raw Prometheus exposition payload — feeds dependent items.'
+
+        # --- Dependent items: counters (per-second rate) -----------------
+        - uuid: 373758a78fe541ee89d1b54a2a66c4e9
+          name: 'lidi: bytes/sec'
+          type: DEPENDENT
+          key: 'lidi.bytes.rate'
+          value_type: FLOAT
+          units: Bps
+          master_item:
+            key: 'lidi.metrics.raw'
+          preprocessing:
+            - type: PROMETHEUS_PATTERN
+              parameters:
+                - 'lidi_bytes_total'
+                - value
+                - ''
+            - type: CHANGE_PER_SECOND
+
+        - uuid: 73ed0af9ac58432a9eed986270f7134b
+          name: 'lidi: packets/sec'
+          type: DEPENDENT
+          key: 'lidi.packets.rate'
+          value_type: FLOAT
+          units: '!pps'
+          master_item:
+            key: 'lidi.metrics.raw'
+          preprocessing:
+            - type: PROMETHEUS_PATTERN
+              parameters:
+                - 'lidi_packets_total'
+                - value
+                - ''
+            - type: CHANGE_PER_SECOND
+
+        # --- Dependent items: gauges --------------------------------------
+        - uuid: 4f452e0c14604e20b0786cb611b981ba
+          name: 'lidi: active transfers'
+          type: DEPENDENT
+          key: 'lidi.transfers.active'
+          value_type: UNSIGNED
+          master_item:
+            key: 'lidi.metrics.raw'
+          preprocessing:
+            - type: PROMETHEUS_PATTERN
+              parameters:
+                - 'lidi_active_transfers'
+                - value
+                - ''
+
+        - uuid: a315c65483ae481b9594d626e4c60c59
+          name: 'lidi: uptime'
+          type: DEPENDENT
+          key: 'lidi.uptime'
+          value_type: UNSIGNED
+          units: s
+          master_item:
+            key: 'lidi.metrics.raw'
+          preprocessing:
+            - type: PROMETHEUS_PATTERN
+              parameters:
+                - 'lidi_uptime_seconds'
+                - value
+                - ''
+
+        - uuid: 69c91dad36e1408ca28829ccf2a818a3
+          name: 'lidi: heartbeat age'
+          type: DEPENDENT
+          key: 'lidi.heartbeat.age'
+          value_type: FLOAT
+          units: s
+          master_item:
+            key: 'lidi.metrics.raw'
+          description: |
+            Wall-clock seconds since the last heartbeat block was processed.
+            Stays at the current Unix time until a heartbeat arrives.
+          preprocessing:
+            - type: PROMETHEUS_PATTERN
+              parameters:
+                - 'lidi_last_heartbeat_unix_seconds'
+                - value
+                - ''
+            - type: JAVASCRIPT
+              parameters:
+                - 'return Math.max(0, (Date.now() / 1000) - Number(value));'
+
+      discovery_rules:
+        # --- LLD: one item per transfer outcome (started/finished/aborted)
+        - uuid: 3fbda8b3dc3746cab296f032a7be4b3f
+          name: 'lidi: transfer outcomes'
+          type: DEPENDENT
+          key: 'lidi.transfers.discovery'
+          delay: '0'
+          master_item:
+            key: 'lidi.metrics.raw'
+          preprocessing:
+            - type: PROMETHEUS_TO_JSON
+              parameters:
+                - 'lidi_transfers_total'
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var rows = JSON.parse(value);
+                  return JSON.stringify(rows.map(function (r) {
+                    return { '{#RESULT}': r.labels.result };
+                  }));
+          item_prototypes:
+            - uuid: 017b6cc6c57f4e40b1ca4f90368acc1e
+              name: 'lidi: transfers ({#RESULT}) /sec'
+              type: DEPENDENT
+              key: 'lidi.transfers.rate[{#RESULT}]'
+              value_type: FLOAT
+              units: '!tps'
+              master_item:
+                key: 'lidi.metrics.raw'
+              preprocessing:
+                - type: PROMETHEUS_PATTERN
+                  parameters:
+                    - 'lidi_transfers_total{result="{#RESULT}"}'
+                    - value
+                    - ''
+                - type: CHANGE_PER_SECOND
+
+      triggers:
+        - uuid: 92966902a12b40e8a9657370dfa0ceec
+          name: 'lidi: no heartbeat for {$LIDI_HEARTBEAT_AGE_WARN}s on {HOST.NAME}'
+          expression: 'last(/lidi diode/lidi.heartbeat.age) > {$LIDI_HEARTBEAT_AGE_WARN}'
+          priority: HIGH
+          description: |
+            On the receiver side, indicates the sender has stopped emitting
+            heartbeat blocks. lidi already warns in logs at 10s; this
+            threshold (default 30s) is meant for paging.
+
+        - uuid: 18530cadb4224aafb3a3f52456819ed0
+          name: 'lidi: scrape failing on {HOST.NAME}'
+          expression: 'nodata(/lidi diode/lidi.metrics.raw,2m)=1'
+          priority: AVERAGE
+          description: |
+            The /metrics endpoint has not returned a payload in 2 minutes —
+            either lidi is down, --http-addr is not enabled, or the
+            address/port is wrong.

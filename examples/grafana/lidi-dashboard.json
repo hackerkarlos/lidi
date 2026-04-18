@@ -1,0 +1,205 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "description": "Sample Grafana dashboard for lidi (https://github.com/ANSSI-FR/lidi). Pairs with Prometheus scraping the /metrics endpoint of each diode side. The `role` label distinguishes send vs. receive panels.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Throughput (bytes/sec)",
+      "id": 1,
+      "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "custom": {"lineWidth": 2, "fillOpacity": 10, "showPoints": "never"}
+        }
+      },
+      "options": {"legend": {"showLegend": true, "displayMode": "table", "placement": "bottom"}},
+      "targets": [
+        {
+          "expr": "rate(lidi_bytes_total[1m])",
+          "legendFormat": "{{role}} ({{instance}})",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Packet rate (packets/sec)",
+      "id": 2,
+      "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "pps",
+          "custom": {"lineWidth": 2, "fillOpacity": 10, "showPoints": "never"}
+        }
+      },
+      "options": {"legend": {"showLegend": true, "displayMode": "table", "placement": "bottom"}},
+      "targets": [
+        {
+          "expr": "rate(lidi_packets_total[1m])",
+          "legendFormat": "{{role}} ({{instance}})",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Active transfers",
+      "id": 3,
+      "gridPos": {"x": 0, "y": 8, "w": 6, "h": 5},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 1}
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "lidi_active_transfers",
+          "legendFormat": "{{role}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Heartbeat age (seconds)",
+      "id": 4,
+      "gridPos": {"x": 6, "y": 8, "w": 6, "h": 5},
+      "description": "Wall-clock seconds since the last heartbeat block was processed. Stays at 0 until the first heartbeat. A growing value on the receive side suggests the sender is unreachable.",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 15},
+              {"color": "red", "value": 60}
+            ]
+          },
+          "noValue": "n/a"
+        }
+      },
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "time() - (lidi_last_heartbeat_unix_seconds > 0)",
+          "legendFormat": "{{role}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Transfer outcomes (per 5m)",
+      "id": 5,
+      "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {"lineWidth": 2, "fillOpacity": 30, "stacking": {"mode": "normal", "group": "A"}}
+        }
+      },
+      "options": {"legend": {"showLegend": true, "displayMode": "table", "placement": "bottom"}},
+      "targets": [
+        {
+          "expr": "increase(lidi_transfers_total[5m])",
+          "legendFormat": "{{role}} {{result}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Instances",
+      "id": 6,
+      "gridPos": {"x": 0, "y": 13, "w": 12, "h": 6},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {
+        "defaults": {"unit": "short"},
+        "overrides": []
+      },
+      "options": {"showHeader": true},
+      "targets": [
+        {
+          "expr": "lidi_info",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {"Time": true, "Value": true, "__name__": true, "job": true},
+            "renameByName": {
+              "instance": "instance",
+              "role": "role",
+              "version": "version",
+              "block_bytes": "block_bytes",
+              "repair_pct": "repair_pct",
+              "mtu": "mtu"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 38,
+  "tags": ["lidi", "diode"],
+  "templating": {
+    "list": [
+      {
+        "name": "DS_PROMETHEUS",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {"selected": false, "text": "Prometheus", "value": "Prometheus"},
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "refresh": 1,
+        "regex": ""
+      }
+    ]
+  },
+  "time": {"from": "now-15m", "to": "now"},
+  "timepicker": {},
+  "timezone": "",
+  "title": "lidi diode",
+  "uid": null,
+  "version": 1,
+  "weekStart": ""
+}

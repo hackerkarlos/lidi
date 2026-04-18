@@ -6,7 +6,12 @@ FROM rust:1-bookworm AS builder
 
 WORKDIR /usr/src/lidi
 COPY . .
-RUN cargo install --path .
+# Use host networking for this step so cargo can reach index.crates.io.
+# Required when Docker's default bridge cannot resolve external DNS — e.g. on
+# Arch where systemd-resolved's stub at 127.0.0.53 is unreachable from the
+# build sandbox. Requires a buildx builder with the `network.host` entitlement
+# (see doc/RUNBOOK.md). Runtime images are unaffected.
+RUN --network=host cargo install --locked --path .
 
 FROM ${BASE_IMAGE_FINAL_STAGES} AS send
 

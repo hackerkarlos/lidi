@@ -156,11 +156,11 @@ impl Stats {
     }
 
     fn dec_active(&self) {
-        let _ = self.active_count.fetch_update(
-            Ordering::Relaxed,
-            Ordering::Relaxed,
-            |v| Some(v.saturating_sub(1)),
-        );
+        let _ = self
+            .active_count
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
+                Some(v.saturating_sub(1))
+            });
     }
 
     fn mark_state(&self, id: protocol::ClientId, state: ClientState) {
@@ -176,11 +176,7 @@ impl Stats {
 
     #[must_use]
     pub fn snapshot(&self) -> StatsSnapshot {
-        let clients = self
-            .clients
-            .lock()
-            .map(|g| g.clone())
-            .unwrap_or_default();
+        let clients = self.clients.lock().map(|g| g.clone()).unwrap_or_default();
         StatsSnapshot {
             uptime_secs: self.started_at.elapsed().as_secs(),
             now_unix_ms: unix_now_ms(),
